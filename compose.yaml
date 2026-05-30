@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  openclaw:
+    build: .
+    container_name: axioma-openclaw
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./workspace:/root/.openclaw/workspace
+    environment:
+      - NODE_ENV=production
+      - CLOUDFLARE_AI_ENDPOINT=${CLOUDFLARE_AI_ENDPOINT}
+      - CLOUDFLARE_AUTH_TOKEN=${CLOUDFLARE_AUTH_TOKEN}
+      - POSTGRES_URL=${POSTGRES_URL}
+    networks:
+      - axioma-network
+
+networks:
+  axioma-network:
+    external: true
