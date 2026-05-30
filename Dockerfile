@@ -22,5 +22,5 @@ ENV NODE_PATH=/app/node_modules
 
 EXPOSE 3000
 
-# Apuntamos al ejecutable local que se acaba de crear con total seguridad
-CMD ["./node_modules/.bin/openclaw", "start"]
+# Iniciamos usando npx para resolver correctamente el ejecutable local en el entorno de Node.js
+CMD ["npx", "openclaw", "start"]
