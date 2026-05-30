@@ -9,18 +9,17 @@ RUN apk add --no-cache \
     ca-certificates \
     ttf-freefont
 
-WORKDIR /app
-
-# Inicializamos un package.json limpio e instalamos todo LOCALMENTE en /app
-RUN npm init -y && \
-    npm install openclaw pg puppeteer imapflow nodemailer
-
-# Seteamos variables de entorno para Puppeteer y las dependencias de Node
+# Seteamos variables de entorno para Puppeteer y las dependencias globales de Node
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
-ENV NODE_PATH=/app/node_modules
+ENV NODE_PATH=/usr/local/lib/node_modules
+
+# Instalamos todo GLOBALMENTE para evitar conflictos con montajes de volúmenes de Coolify en /app
+RUN npm install -g openclaw pg puppeteer imapflow nodemailer
+
+WORKDIR /app
 
 EXPOSE 3000
 
-# Iniciamos ejecutando el archivo JS principal directamente con Node, evitando wrappers de shell y npx
-CMD ["node", "./node_modules/openclaw/openclaw.mjs", "start"]
+# Ejecutamos openclaw usando el ejecutable global instalado en el PATH del sistema
+CMD ["openclaw", "start"]
