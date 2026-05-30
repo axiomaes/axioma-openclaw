@@ -26,5 +26,6 @@ WORKDIR /app
 
 EXPOSE 3000
 
-# Gateway en foreground: requerido en Docker (sin systemd) con headless para evitar GUI
-CMD ["openclaw", "gateway", "start", "--foreground"]
+# "gateway run" mantiene el proceso en foreground (para Docker)
+# "gateway start" es para servicios del sistema (systemd/launchd) - no válido en contenedores
+CMD ["openclaw", "gateway", "run"]
