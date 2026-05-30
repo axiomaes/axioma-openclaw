@@ -23,5 +23,5 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 EXPOSE 3000
 
-# Forzamos a que use el ejecutable global del sistema de forma directa
-CMD ["/usr/local/bin/openclaw", "start"]
+# Formato Shell nativo: el sistema buscará 'openclaw' en el PATH global automáticamente
+CMD openclaw start
