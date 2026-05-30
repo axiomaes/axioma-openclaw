@@ -11,11 +11,11 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-# Instalación global del motor de OpenClaw y dependencias para las skills
-RUN npm install -g openclaw pg puppeteer imapflow nodemailer
+# Instalamos de forma local en /app para evitar problemas de PATH y binarios globales
+RUN npm init -y && npm install openclaw pg puppeteer imapflow nodemailer
 
-# Seteamos NODE_PATH para que los scripts locales puedan usar los módulos globales
-ENV NODE_PATH=/usr/local/lib/node_modules
+# Seteamos NODE_PATH para que los scripts en /root/.openclaw/workspace encuentren los módulos
+ENV NODE_PATH=/app/node_modules
 
 # Seteamos la variable para que Puppeteer use el Chromium del sistema
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
@@ -23,4 +23,5 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "openclaw start"]
+# Llamamos al binario local directamente, infalible.
+CMD ["./node_modules/.bin/openclaw", "start"]
