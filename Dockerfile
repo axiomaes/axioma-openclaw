@@ -22,5 +22,5 @@ ENV NODE_PATH=/app/node_modules
 
 EXPOSE 3000
 
-# Iniciamos usando npx para resolver correctamente el ejecutable local en el entorno de Node.js
-CMD ["npx", "openclaw", "start"]
+# Iniciamos ejecutando el archivo JS principal directamente con Node, evitando wrappers de shell y npx
+CMD ["node", "./node_modules/openclaw/openclaw.mjs", "start"]
