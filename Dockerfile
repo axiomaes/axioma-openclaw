@@ -13,6 +13,7 @@ RUN apk add --no-cache \
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ENV NODE_PATH=/usr/local/lib/node_modules
+ENV OPENCLAW_HEADLESS=true
 
 # Instalamos todo GLOBALMENTE para evitar conflictos con montajes de volúmenes de Coolify en /app
 RUN npm install -g openclaw pg puppeteer imapflow nodemailer
@@ -25,5 +26,5 @@ WORKDIR /app
 
 EXPOSE 3000
 
-# Ejecutamos openclaw usando el ejecutable global instalado en el PATH del sistema
-CMD ["openclaw", "start"]
+# Gateway en foreground: requerido en Docker (sin systemd) con headless para evitar GUI
+CMD ["openclaw", "gateway", "start", "--foreground"]
