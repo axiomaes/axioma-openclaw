@@ -23,4 +23,4 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 EXPOSE 3000
 
-CMD ["openclaw", "start"]
+CMD ["npx", "openclaw", "start"]
