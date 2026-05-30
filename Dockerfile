@@ -18,9 +18,10 @@ ENV OPENCLAW_HEADLESS=true
 # Instalamos todo GLOBALMENTE para evitar conflictos con montajes de volúmenes de Coolify en /app
 RUN npm install -g openclaw pg puppeteer imapflow nodemailer
 
-# Configuramos el gateway en modo local (sin cuenta cloud de openclaw)
+# Modo local (self-hosted, sin cuenta cloud) + loopback (Docker maneja el port mapping)
+# El token de auth se inyecta en runtime via OPENCLAW_GATEWAY_TOKEN (configurar en Coolify)
 RUN openclaw config set gateway.mode local && \
-    openclaw config set gateway.bind lan
+    openclaw config set gateway.bind loopback
 
 # Copiamos el workspace al destino que openclaw espera por defecto
 # Los volúmenes de compose/Coolify pueden sobreescribir esto en runtime
