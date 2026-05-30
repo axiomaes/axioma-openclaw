@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:22-alpine3.21
 
 # Instalamos dependencias del sistema para el navegador headless (Scraping)
 RUN apk add --no-cache \
@@ -16,6 +16,10 @@ ENV NODE_PATH=/usr/local/lib/node_modules
 
 # Instalamos todo GLOBALMENTE para evitar conflictos con montajes de volúmenes de Coolify en /app
 RUN npm install -g openclaw pg puppeteer imapflow nodemailer
+
+# Copiamos el workspace al destino que openclaw espera por defecto
+# Los volúmenes de compose/Coolify pueden sobreescribir esto en runtime
+COPY workspace /root/.openclaw/workspace
 
 WORKDIR /app
 
