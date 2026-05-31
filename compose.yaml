@@ -1,25 +1,16 @@
 version: '3.8'
 
 services:
-  openclaw:
+  agent:
     build: .
-    container_name: axioma-openclaw
+    container_name: axioma-agent
     restart: always
-    ports:
-      - "3000:3000"
     environment:
-      - NODE_ENV=${NODE_ENV}
-      - PORT=${PORT}
       - GROQ_API_KEY=${GROQ_API_KEY}
-      - CLOUDFLARE_AI_ENDPOINT=${CLOUDFLARE_AI_ENDPOINT}
-      - CLOUDFLARE_AUTH_TOKEN=${CLOUDFLARE_AUTH_TOKEN}
-      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
-      - OLLAMA_MODEL=${OLLAMA_MODEL}
-      - DATABASE_URL=${DATABASE_URL}
-      - POSTGRES_URL=${POSTGRES_URL}
       - AXIOMA_API_URL=${AXIOMA_API_URL}
       - CONTROL_PLANE_TOKEN=${CONTROL_PLANE_TOKEN}
       - LINKEDIN_ACCESS_TOKEN=${LINKEDIN_ACCESS_TOKEN}
+      - LINKEDIN_PERSON_ID=${LINKEDIN_PERSON_ID}
       - INSTAGRAM_ACCESS_TOKEN=${INSTAGRAM_ACCESS_TOKEN}
       - INSTAGRAM_BUSINESS_ACCOUNT_ID=${INSTAGRAM_BUSINESS_ACCOUNT_ID}
       - FACEBOOK_ACCESS_TOKEN=${FACEBOOK_ACCESS_TOKEN}
@@ -30,15 +21,9 @@ services:
       - MAILCOW_SMTP_PORT=${MAILCOW_SMTP_PORT}
       - MAILCOW_USER=${MAILCOW_USER}
       - MAILCOW_PASS=${MAILCOW_PASS}
-    volumes:
-      - openclaw-config:/root/.openclaw
-      - ./workspace/settings.json:/root/.openclaw/settings.json:ro
     networks:
       - axioma-network
 
 networks:
   axioma-network:
     external: true
-
-volumes:
-  openclaw-config:
