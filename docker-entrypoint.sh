@@ -19,5 +19,14 @@ fi
 mkdir -p /root/.openclaw/agents/main/agent
 cp /root/.openclaw/workspace/agent-auth-profiles.json /root/.openclaw/agents/main/agent/auth-profiles.json
 
+# Configura el modelo del agente main
+cat > /root/.openclaw/agents/main/agent/settings.json << 'SETTINGS'
+{
+  "model": {
+    "primary": "groq/llama-3.1-8b-instant"
+  }
+}
+SETTINGS
+
 # Arranca OpenClaw
 exec openclaw "$@"
