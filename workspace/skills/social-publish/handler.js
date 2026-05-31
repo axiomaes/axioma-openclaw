@@ -53,38 +53,28 @@ Requisito específico: ${instruction}`;
   return `¡Nuevo artículo! ${blog.title} - ${blog.url_es || blog.slug}`;
 }
 
-async function publishReal(platform, content, imageUrl) {
+async function publishReal(platform, content, imageUrl, articleUrl, articleTitle) {
   if (platform === 'linkedin') {
-    const profileResponse = await fetch('https://api.linkedin.com/v2/me', {
-      headers: {
-        'Authorization': `Bearer ${process.env.LINKEDIN_ACCESS_TOKEN}`,
-        'X-Restli-Protocol-Version': '2.0.0'
-      }
-    });
-    if (!profileResponse.ok) throw new Error("Error obtaining LinkedIn profile");
-    const profile = await profileResponse.json();
-    const authorUrn = `urn:li:person:${profile.id}`;
+    const personId = process.env.LINKEDIN_PERSON_ID;
+    if (!personId) throw new Error("Missing LINKEDIN_PERSON_ID");
 
+    const authorUrn = `urn:li:person:${personId}`;
     const ugcPayload = {
       author: authorUrn,
-      lifecycleState: "PUBLISHED",
+      lifecycleState: 'PUBLISHED',
       specificContent: {
-        "com.linkedin.ugc.ShareContent": {
+        'com.linkedin.ugc.ShareContent': {
           shareCommentary: { text: content },
-          shareMediaCategory: imageUrl ? "IMAGE" : "NONE"
+          shareMediaCategory: 'ARTICLE',
+          media: [{
+            status: 'READY',
+            originalUrl: articleUrl || 'https://axioma-creativa.es',
+            title: { text: articleTitle || 'Nuevo artículo en el blog' }
+          }]
         }
       },
-      visibility: { "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC" }
+      visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' }
     };
-
-    if (imageUrl) {
-      ugcPayload.specificContent["com.linkedin.ugc.ShareContent"].media = [{
-        status: "READY",
-        description: { text: "Imagen" },
-        media: imageUrl,
-        title: { text: "Post" }
-      }];
-    }
 
     const res = await fetch('https://api.linkedin.com/v2/ugcPosts', {
       method: 'POST',
@@ -166,7 +156,7 @@ async function handle(input) {
 
     if (isConfigured) {
       try {
-        postIdExterno = await publishReal(platform, copy, blog.og_image || blog.cover);
+        postIdExterno = await publishReal(platform, copy, blog.og_image || blog.cover, blog.url_es || blog.slug, blog.title);
         activityStatus = 'success';
         console.log(`[REAL] Publicado en ${platform}: ${postIdExterno}`);
       } catch (err) {
