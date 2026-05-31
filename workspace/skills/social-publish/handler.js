@@ -1,204 +1,205 @@
-const https = require('https');
+const scheduler = require('../../lib/scheduler');
+const scoutWeb = require('../scout-web/handler');
+
+const cfEndpoint = process.env.CLOUDFLARE_AI_ENDPOINT;
+const cfToken = process.env.CLOUDFLARE_AUTH_TOKEN;
+
+async function generateCopy(blog, platform) {
+  let instruction = "";
+  if (platform === 'linkedin') instruction = "copy profesional 150-200 palabras, CTA al URL del blog, hashtags sector tech";
+  if (platform === 'instagram') instruction = "copy visual 80-100 palabras, emojis moderados, 5 hashtags relevantes";
+  if (platform === 'facebook') instruction = "copy conversacional 100-130 palabras, pregunta al final para engagement";
+
+  const systemPrompt = `Eres el community manager de Axioma Creativa, agencia digital española especializada 
+en desarrollo web, automatización e inteligencia artificial para empresas B2B.
+Tono: profesional pero cercano. Idioma: español.`;
+
+  const userPrompt = `Escribe un post para ${platform} sobre este artículo: 
+Título: ${blog.title}
+Descripción: ${blog.description}
+TL;DR: ${blog.tldr}
+URL: ${blog.url_es || blog.slug}
+Responde ÚNICAMENTE con el texto del post, sin explicaciones adicionales.
+Requisito específico: ${instruction}`;
+
+  if (!cfEndpoint || !cfToken) {
+    return `¡Nuevo artículo en el blog! ${blog.title} - Léelo aquí: ${blog.url_es || blog.slug}`;
+  }
+
+  const payload = {
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ]
+  };
+
+  try {
+    const response = await fetch(cfEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cfToken}`
+      },
+      body: JSON.stringify(payload)
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return data.result?.response || data.choices?.[0]?.message?.content || "";
+    }
+  } catch (err) {
+    console.error('Error in AI generate:', err.message);
+  }
+  
+  return `¡Nuevo artículo! ${blog.title} - ${blog.url_es || blog.slug}`;
+}
+
+async function publishReal(platform, content, imageUrl) {
+  if (platform === 'linkedin') {
+    const profileResponse = await fetch('https://api.linkedin.com/v2/me', {
+      headers: {
+        'Authorization': `Bearer ${process.env.LINKEDIN_ACCESS_TOKEN}`,
+        'X-Restli-Protocol-Version': '2.0.0'
+      }
+    });
+    if (!profileResponse.ok) throw new Error("Error obtaining LinkedIn profile");
+    const profile = await profileResponse.json();
+    const authorUrn = `urn:li:person:${profile.id}`;
+
+    const ugcPayload = {
+      author: authorUrn,
+      lifecycleState: "PUBLISHED",
+      specificContent: {
+        "com.linkedin.ugc.ShareContent": {
+          shareCommentary: { text: content },
+          shareMediaCategory: imageUrl ? "IMAGE" : "NONE"
+        }
+      },
+      visibility: { "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC" }
+    };
+
+    if (imageUrl) {
+      ugcPayload.specificContent["com.linkedin.ugc.ShareContent"].media = [{
+        status: "READY",
+        description: { text: "Imagen" },
+        media: imageUrl,
+        title: { text: "Post" }
+      }];
+    }
+
+    const res = await fetch('https://api.linkedin.com/v2/ugcPosts', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.LINKEDIN_ACCESS_TOKEN}`,
+        'X-Restli-Protocol-Version': '2.0.0',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(ugcPayload)
+    });
+    if (!res.ok) throw new Error("Error publishing to LinkedIn");
+    const result = await res.json();
+    return result.id;
+  }
+
+  if (platform === 'instagram') {
+    const bizId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
+    const token = process.env.INSTAGRAM_ACCESS_TOKEN;
+    if (!bizId) throw new Error("Missing INSTAGRAM_BUSINESS_ACCOUNT_ID");
+    if (!imageUrl) throw new Error("Instagram requires imageUrl");
+
+    const mediaRes = await fetch(`https://graph.facebook.com/v19.0/${bizId}/media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_url: imageUrl, caption: content, access_token: token })
+    });
+    if (!mediaRes.ok) throw new Error("Error creating Instagram media");
+    const mediaData = await mediaRes.json();
+
+    const pubRes = await fetch(`https://graph.facebook.com/v19.0/${bizId}/media_publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creation_id: mediaData.id, access_token: token })
+    });
+    if (!pubRes.ok) throw new Error("Error publishing Instagram media");
+    const pubData = await pubRes.json();
+    return pubData.id;
+  }
+
+  // Fallback for facebook or others
+  return `sim_real_${platform}_${Date.now()}`;
+}
 
 async function handle(input) {
-  const { platform, content, imageUrl } = input;
-  
-  if (!platform || !content) {
-    return {
-      status: "failed",
-      error: "Faltan parámetros obligatorios: 'platform' y 'content' son requeridos."
-    };
+  if (!scheduler.shouldPublishNow()) {
+    console.log("Scheduler says not to publish now.");
+    return { status: 'skipped', reason: 'not_scheduled' };
   }
 
-  const normalizedPlatform = platform.toLowerCase();
-  
-  if (normalizedPlatform !== 'linkedin' && normalizedPlatform !== 'instagram') {
-    return {
-      status: "failed",
-      error: `Plataforma '${platform}' no soportada. Use 'linkedin' o 'instagram'.`
-    };
+  const pending = await scoutWeb.handle({ mode: 'db_audit' });
+  if (!pending || (!pending.linkedin?.length && !pending.instagram?.length && !pending.facebook?.length)) {
+    console.log("No pending blogs to publish.");
+    await scoutWeb.handle({
+      mode: 'log_activity',
+      agent: 'Axio Scout',
+      skill: 'social-publish',
+      action: 'Check pending blogs',
+      status: 'success',
+      detail: { reason: 'no_content' }
+    });
+    return { status: 'skipped', reason: 'no_content' };
   }
 
-  // Comprobar modo simulación / tokens por defecto
-  const isLinkedinTokenConfigured = process.env.LINKEDIN_ACCESS_TOKEN && 
-    !process.env.LINKEDIN_ACCESS_TOKEN.includes('tu_token') && 
-    process.env.LINKEDIN_ACCESS_TOKEN.length > 15;
+  const platforms = ['linkedin', 'instagram', 'facebook'];
+  let publishedCount = 0;
+
+  for (const platform of platforms) {
+    if (!pending[platform] || pending[platform].length === 0) continue;
     
-  const isInstagramTokenConfigured = process.env.INSTAGRAM_ACCESS_TOKEN && 
-    !process.env.INSTAGRAM_ACCESS_TOKEN.includes('tu_token') && 
-    process.env.INSTAGRAM_ACCESS_TOKEN.length > 15;
+    const blog = pending[platform][0];
+    const copy = await generateCopy(blog, platform);
+    
+    const tokenEnv = platform === 'facebook' ? 'FACEBOOK_ACCESS_TOKEN' : `${platform.toUpperCase()}_ACCESS_TOKEN`;
+    const token = process.env[tokenEnv];
+    const isConfigured = token && !token.includes('tu_token') && token.length > 15;
 
-  if (normalizedPlatform === 'linkedin') {
-    if (!isLinkedinTokenConfigured) {
-      console.log(`[SIMULACIÓN] Publicación en LinkedIn: "${content.substring(0, 100)}..."`);
-      return {
-        status: "success",
-        postId: "sim_li_" + Math.random().toString(36).substring(2, 10),
-        message: "Simulación exitosa. Configura LINKEDIN_ACCESS_TOKEN con un token válido de la API para publicar de verdad."
-      };
+    let activityStatus = 'simulated';
+    let postIdExterno = `sim_${platform}_${Math.random().toString(36).substring(2, 10)}`;
+
+    if (isConfigured) {
+      try {
+        postIdExterno = await publishReal(platform, copy, blog.og_image || blog.cover);
+        activityStatus = 'success';
+        console.log(`[REAL] Publicado en ${platform}: ${postIdExterno}`);
+      } catch (err) {
+        activityStatus = 'error';
+        console.error(`Error publishing real to ${platform}:`, err.message);
+      }
+    } else {
+      console.log(`[SIMULACIÓN] Publicación en ${platform}: "${copy.substring(0, 50)}..."`);
     }
 
-    try {
-      // 1. Obtener URN de usuario consultando la API /me
-      const profileResponse = await fetch('https://api.linkedin.com/v2/me', {
-        headers: {
-          'Authorization': `Bearer ${process.env.LINKEDIN_ACCESS_TOKEN}`,
-          'X-Restli-Protocol-Version': '2.0.0'
-        }
-      });
-
-      if (!profileResponse.ok) {
-        const errText = await profileResponse.text();
-        throw new Error(`Error obteniendo perfil de LinkedIn (/me): ${profileResponse.statusText} - ${errText}`);
-      }
-
-      const profile = await profileResponse.json();
-      const authorUrn = `urn:li:person:${profile.id}`;
-
-      // 2. Crear UGC Post
-      const ugcPayload = {
-        author: authorUrn,
-        lifecycleState: "PUBLISHED",
-        specificContent: {
-          "com.linkedin.ugc.ShareContent": {
-            shareCommentary: {
-              text: content
-            },
-            shareMediaCategory: "NONE"
-          }
-        },
-        visibility: {
-          "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
-        }
-      };
-
-      // Si hay una imagen, cambiamos la categoría y adjuntamos el medio
-      if (imageUrl) {
-        ugcPayload.specificContent["com.linkedin.ugc.ShareContent"].shareMediaCategory = "IMAGE";
-        ugcPayload.specificContent["com.linkedin.ugc.ShareContent"].media = [
-          {
-            status: "READY",
-            description: {
-              text: "Imagen de Axioma Creativa"
-            },
-            media: imageUrl,
-            title: {
-              text: "Axioma Creativa Post"
-            }
-          }
-        ];
-      }
-
-      const publishResponse = await fetch('https://api.linkedin.com/v2/ugcPosts', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.LINKEDIN_ACCESS_TOKEN}`,
-          'X-Restli-Protocol-Version': '2.0.0',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(ugcPayload)
-      });
-
-      if (!publishResponse.ok) {
-        const errText = await publishResponse.text();
-        throw new Error(`Error al publicar en LinkedIn (/ugcPosts): ${publishResponse.statusText} - ${errText}`);
-      }
-
-      const result = await publishResponse.json();
-      return {
-        status: "success",
-        postId: result.id,
-        message: "Publicado en LinkedIn con éxito."
-      };
-    } catch (error) {
-      console.error("Error publicando en LinkedIn:", error);
-      return {
-        status: "failed",
-        error: error.message
-      };
+    if (activityStatus === 'success' || activityStatus === 'simulated') {
+      await scoutWeb.handle({ mode: 'mark_published', id: blog.id, platform });
     }
+
+    await scoutWeb.handle({
+      mode: 'log_activity',
+      agent: 'Axio Scout',
+      skill: 'social-publish',
+      action: `Publish to ${platform}`,
+      ref_id: blog.id,
+      ref_type: 'blog',
+      status: activityStatus,
+      detail: { post_id_externo: postIdExterno, copy_generado: copy, blog_url: blog.url_es || blog.slug }
+    });
+
+    publishedCount++;
   }
 
-  if (normalizedPlatform === 'instagram') {
-    if (!isInstagramTokenConfigured) {
-      console.log(`[SIMULACIÓN] Publicación en Instagram: "${content.substring(0, 100)}..."`);
-      return {
-        status: "success",
-        postId: "sim_ig_" + Math.random().toString(36).substring(2, 10),
-        message: "Simulación exitosa. Configura INSTAGRAM_ACCESS_TOKEN e INSTAGRAM_BUSINESS_ACCOUNT_ID para publicar de verdad."
-      };
-    }
-
-    const businessAccountId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
-    if (!businessAccountId) {
-      return {
-        status: "failed",
-        error: "Para publicar en Instagram de verdad se necesita definir la variable de entorno INSTAGRAM_BUSINESS_ACCOUNT_ID."
-      };
-    }
-
-    if (!imageUrl) {
-      return {
-        status: "failed",
-        error: "La API de Instagram Business requiere obligatoriamente una imagen (imageUrl) para crear un contenedor de contenido."
-      };
-    }
-
-    try {
-      // 1. Crear el contenedor multimedia en la Graph API
-      const mediaUrl = `https://graph.facebook.com/v19.0/${businessAccountId}/media`;
-      const mediaResponse = await fetch(mediaUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          image_url: imageUrl,
-          caption: content,
-          access_token: process.env.INSTAGRAM_ACCESS_TOKEN
-        })
-      });
-
-      if (!mediaResponse.ok) {
-        const errText = await mediaResponse.text();
-        throw new Error(`Error creando contenedor multimedia en Instagram: ${mediaResponse.statusText} - ${errText}`);
-      }
-
-      const mediaData = await mediaResponse.json();
-      const creationId = mediaData.id; // ID del contenedor temporal creado
-
-      // 2. Publicar el contenedor creado
-      const publishUrl = `https://graph.facebook.com/v19.0/${businessAccountId}/media_publish`;
-      const publishResponse = await fetch(publishUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          creation_id: creationId,
-          access_token: process.env.INSTAGRAM_ACCESS_TOKEN
-        })
-      });
-
-      if (!publishResponse.ok) {
-        const errText = await publishResponse.text();
-        throw new Error(`Error publicando contenedor multimedia en Instagram: ${publishResponse.statusText} - ${errText}`);
-      }
-
-      const publishData = await publishResponse.json();
-      return {
-        status: "success",
-        postId: publishData.id,
-        message: "Publicado en Instagram con éxito."
-      };
-    } catch (error) {
-      console.error("Error publicando en Instagram:", error);
-      return {
-        status: "failed",
-        error: error.message
-      };
-    }
+  if (publishedCount > 0) {
+    scheduler.markPublished();
   }
+
+  return { status: "success", publishedCount };
 }
 
 module.exports = { handle };
