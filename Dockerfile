@@ -34,4 +34,7 @@ EXPOSE 3000
 
 # "gateway run" mantiene el proceso en foreground (para Docker)
 # "--allow-unconfigured" permite arrancar sin configuración cloud adicional
-CMD ["openclaw", "gateway", "run", "--allow-unconfigured"]
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["gateway", "run", "--allow-unconfigured"]
