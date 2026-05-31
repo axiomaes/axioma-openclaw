@@ -1,3 +1,8 @@
+---
+model: @cf/meta/llama-3-8b-instruct
+baseURL: https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/v1
+apiKey: ${CLOUDFLARE_AUTH_TOKEN}
+---
 # Axioma Creativa Autonomous Agent Network
 
 ## Agent: Axio Scout
