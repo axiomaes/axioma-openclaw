@@ -1,32 +1,16 @@
 const fs = require('fs');
 const path = require('path');
 
-const STATE_FILE = path.join(__dirname, '..', '.scheduler-state.json');
-
-function getBaseSlots(weekStart) {
-  // Lunes (1), Miércoles (3), Viernes (5)
-  return [1, 3, 5].map(dayOffset => {
-    // Variación de ±1 día
-    const variation = Math.floor(Math.random() * 3) - 1; // -1, 0, 1
-    let targetDay = dayOffset + variation;
-    // Si cae en fin de semana, lo ajustamos a viernes o lunes
-    if (targetDay <= 0) targetDay = 1;
-    if (targetDay >= 6) targetDay = 5;
-    
-    // Hora aleatoria entre 08:00 y 10:30
-    const hour = 8 + Math.floor(Math.random() * 3); // 8, 9, 10
-    const minute = Math.floor(Math.random() * (hour === 10 ? 31 : 60)); 
-    
-    const slotDate = new Date(weekStart);
-    slotDate.setDate(slotDate.getDate() + targetDay - slotDate.getDay());
-    slotDate.setHours(hour, minute, 0, 0);
-    return slotDate;
-  });
-}
+// El estado debe persistir en /root/.openclaw/.scheduler-state.json (dentro del volumen persistente)
+// Hacemos fallback local por si se ejecuta fuera de Docker
+const STATE_FILE = fs.existsSync('/root/.openclaw') 
+  ? '/root/.openclaw/.scheduler-state.json' 
+  : path.join(__dirname, '..', '.scheduler-state.json');
 
 function getWeekStart(date) {
   const d = new Date(date);
   const day = d.getDay();
+  // Lunes como inicio de semana
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   d.setDate(diff);
   d.setHours(0, 0, 0, 0);
@@ -35,7 +19,11 @@ function getWeekStart(date) {
 
 function loadState() {
   if (fs.existsSync(STATE_FILE)) {
-    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    try {
+      return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    } catch (e) {
+      console.error("Error reading state file", e);
+    }
   }
   return generateNewState();
 }
@@ -47,11 +35,10 @@ function saveState(state) {
 function generateNewState() {
   const now = new Date();
   const weekStart = getWeekStart(now);
-  const slots = getBaseSlots(weekStart);
   
   const state = {
     weekStart: weekStart.toISOString(),
-    slots: slots.map(s => s.toISOString()),
+    publishedCount: 0,
     lastPublished: null
   };
   saveState(state);
@@ -64,48 +51,46 @@ function shouldPublishNow() {
   
   const currentWeekStart = getWeekStart(now);
   if (new Date(state.weekStart).getTime() !== currentWeekStart.getTime()) {
+    // Es una nueva semana calendario, reseteamos el estado
     state = generateNewState();
+  }
+
+  // 1. Respeta el límite de 3 publicaciones por semana
+  // 2. No publica si ya se publicaron 3 blogs esta semana
+  if (state.publishedCount >= 3) {
+    return false;
   }
 
   if (state.lastPublished) {
     const lastPub = new Date(state.lastPublished);
-    if (lastPub.toDateString() === now.toDateString()) {
-      return false; // Ya se publicó hoy
-    }
-  }
-
-  for (const slotStr of state.slots) {
-    const slot = new Date(slotStr);
-    const diffMin = Math.abs((now.getTime() - slot.getTime()) / 60000);
     
-    // Ventana de ±15 minutos
-    if (diffMin <= 15) {
-      return true;
+    // Comparamos días a medianoche para ver separación pura de calendario
+    const lastPubDate = new Date(lastPub);
+    lastPubDate.setHours(0, 0, 0, 0);
+    const nowDate = new Date(now);
+    nowDate.setHours(0, 0, 0, 0);
+    
+    const diffDays = Math.round((nowDate.getTime() - lastPubDate.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // 3. Deja al menos 1 día de separación entre publicaciones
+    // Si diffDays == 0 (mismo día), o diffDays == 1 (día siguiente consecutivo), bloqueamos.
+    // Requiere diffDays >= 2 (ej. Publica Lunes -> Martes bloqueado -> Miércoles permitido)
+    if (diffDays <= 1) {
+      return false;
     }
   }
-  
-  return false;
-}
 
-function getNextScheduledSlot() {
-  const state = loadState();
-  const now = new Date();
-  
-  for (const slotStr of state.slots) {
-    const slot = new Date(slotStr);
-    if (slot > now) return slot;
-  }
-  return null;
+  return true;
 }
 
 function markPublished() {
   const state = loadState();
   state.lastPublished = new Date().toISOString();
+  state.publishedCount = (state.publishedCount || 0) + 1;
   saveState(state);
 }
 
 module.exports = {
   shouldPublishNow,
-  getNextScheduledSlot,
   markPublished
 };
