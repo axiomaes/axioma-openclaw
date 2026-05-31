@@ -1,0 +1,15 @@
+{
+  "agents": {
+    "defaults": {
+      "model": "cloudflare/@cf/meta/llama-3-8b-instruct"
+    }
+  },
+  "models": {
+    "providers": {
+      "cloudflare": {
+        "baseURL": "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/v1",
+        "apiKey": "${CLOUDFLARE_AUTH_TOKEN}"
+      }
+    }
+  }
+}
