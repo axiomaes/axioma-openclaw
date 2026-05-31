@@ -26,6 +26,7 @@ RUN openclaw config set gateway.mode local && \
 # Copiamos el workspace al destino que openclaw espera por defecto
 # Los volúmenes de compose/Coolify pueden sobreescribir esto en runtime
 COPY workspace /root/.openclaw/workspace
+COPY workspace/settings.json /root/.openclaw/settings.json
 
 WORKDIR /app
 

@@ -32,8 +32,6 @@ services:
       - MAILCOW_SMTP_PORT=${MAILCOW_SMTP_PORT}
       - MAILCOW_USER=${MAILCOW_USER}
       - MAILCOW_PASS=${MAILCOW_PASS}
-    volumes:
-      - ./workspace/settings.json:/root/.openclaw/settings.json:ro
     networks:
       - axioma-network
 
