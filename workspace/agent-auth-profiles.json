@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "groq:default": {
+      "provider": "groq",
+      "type": "api_key",
+      "keyRef": {
+        "source": "env",
+        "id": "GROQ_API_KEY"
+      }
+    }
+  }
+}
