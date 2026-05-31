@@ -17,7 +17,7 @@ fi
 
 # Crea el directorio si no existe y copia auth profiles al directorio del agente
 mkdir -p /root/.openclaw/agents/main/agent
-cp /app/workspace/agent-auth-profiles.json /root/.openclaw/agents/main/agent/auth-profiles.json
+cp /root/.openclaw/workspace/agent-auth-profiles.json /root/.openclaw/agents/main/agent/auth-profiles.json
 
 # Arranca OpenClaw
 exec openclaw "$@"
