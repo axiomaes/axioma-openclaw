@@ -16,6 +16,42 @@ function getWeekStart(date) {
   return d;
 }
 
+function generateSlot(weekStart, dayOffset) {
+  const slot = new Date(weekStart);
+  slot.setDate(slot.getDate() + dayOffset); // Lunes=0, Miércoles=2, Viernes=4
+  slot.setHours(9, 0, 0, 0);
+  const randomMinutes = Math.floor(Math.random() * 60);
+  slot.setMinutes(randomMinutes);
+  return slot.toISOString();
+}
+
+export function initWeekState() {
+  const now = new Date();
+  const weekStart = getWeekStart(now);
+  const state = {
+    weekStart: weekStart.toISOString(),
+    platforms: {
+      linkedin: {
+        publishedCount: 0,
+        lastPublished: null,
+        nextSlot: generateSlot(weekStart, 0)
+      },
+      instagram: {
+        publishedCount: 0,
+        lastPublished: null,
+        nextSlot: generateSlot(weekStart, 2)
+      },
+      facebook: {
+        publishedCount: 0,
+        lastPublished: null,
+        nextSlot: generateSlot(weekStart, 4)
+      }
+    }
+  };
+  saveState(state);
+  return state;
+}
+
 function loadState() {
   if (fs.existsSync(STATE_FILE)) {
     try {
@@ -24,65 +60,51 @@ function loadState() {
       console.error("Error reading state file", e);
     }
   }
-  return generateNewState();
+  return initWeekState();
 }
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
 }
 
-function generateNewState() {
-  const now = new Date();
-  const weekStart = getWeekStart(now);
-  
-  const state = {
-    weekStart: weekStart.toISOString(),
-    publishedCount: 0,
-    lastPublished: null
-  };
-  saveState(state);
-  return state;
-}
-
-export function shouldPublishNow() {
+export function getPlatformsToPublish() {
   let state = loadState();
   const now = new Date();
-  
   const currentWeekStart = getWeekStart(now);
+  
   if (new Date(state.weekStart).getTime() !== currentWeekStart.getTime()) {
-    // Es una nueva semana calendario, reseteamos el estado
-    state = generateNewState();
+    state = initWeekState();
   }
 
-  // 1. Respeta el límite de 3 publicaciones por semana
-  // 2. No publica si ya se publicaron 3 blogs esta semana
-  if (state.publishedCount >= 3) {
-    return false;
-  }
+  const platforms = [];
+  const dayOfWeek = now.getDay();
+  
+  // Nunca publicar sábado(6) ni domingo(0)
+  if (dayOfWeek === 0 || dayOfWeek === 6) return platforms;
 
-  if (state.lastPublished) {
-    const lastPub = new Date(state.lastPublished);
+  for (const plat of ['linkedin', 'instagram', 'facebook']) {
+    const pState = state.platforms[plat];
+    if (!pState || pState.publishedCount >= 1) continue;
     
-    // Comparamos días a medianoche para ver separación pura de calendario
-    const lastPubDate = new Date(lastPub);
-    lastPubDate.setHours(0, 0, 0, 0);
-    const nowDate = new Date(now);
-    nowDate.setHours(0, 0, 0, 0);
+    const slot = new Date(pState.nextSlot);
     
-    const diffDays = Math.round((nowDate.getTime() - lastPubDate.getTime()) / (1000 * 60 * 60 * 24));
-    
-    // 3. Deja al menos 1 día de separación entre publicaciones
-    if (diffDays <= 1) {
-      return false;
+    // Si se pierde el slot, publicar en el próximo heartbeat disponible ese mismo día
+    if (now.getTime() >= slot.getTime() && 
+        now.getDate() === slot.getDate() && 
+        now.getMonth() === slot.getMonth() && 
+        now.getFullYear() === slot.getFullYear()) {
+      platforms.push(plat);
     }
   }
 
-  return true;
+  return platforms;
 }
 
-export function markPublished() {
+export function markPlatformPublished(platform) {
   const state = loadState();
-  state.lastPublished = new Date().toISOString();
-  state.publishedCount = (state.publishedCount || 0) + 1;
-  saveState(state);
+  if (state.platforms && state.platforms[platform]) {
+    state.platforms[platform].publishedCount += 1;
+    state.platforms[platform].lastPublished = new Date().toISOString();
+    saveState(state);
+  }
 }
