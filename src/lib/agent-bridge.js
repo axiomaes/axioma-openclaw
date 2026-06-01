@@ -13,11 +13,14 @@ export async function getPendingBlogs(platform) {
   return await res.json();
 }
 
-export async function markPublished(blogId, platform) {
+export async function markPublished(blogId, platform, linkedinPostId) {
+  const body = { platform };
+  if (linkedinPostId) body.linkedin_post_id = linkedinPostId;
+
   const res = await fetch(`${getBaseUrl()}/agent-bridge/blogs/${blogId}/mark-published`, {
     method: 'PATCH',
     headers: getHeaders(),
-    body: JSON.stringify({ platform })
+    body: JSON.stringify(body)
   });
   if (!res.ok) throw new Error(`markPublished failed for ${blogId}`);
   return await res.json();

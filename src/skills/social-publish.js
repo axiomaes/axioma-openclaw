@@ -16,8 +16,12 @@ Título: ${blog.title}
 Descripción: ${blog.description}
 TL;DR: ${blog.tldr}
 URL: ${blog.url_es || blog.slug}
-Responde ÚNICAMENTE con el texto del post, sin explicaciones adicionales.
-Requisito específico: ${instruction}`;
+Requisito específico: ${instruction}
+
+Responde ÚNICAMENTE con el texto del post listo para publicar.
+NO incluyas explicaciones, preguntas, notas, ni frases como "si quieres más hashtags".
+NO incluyas comillas al inicio o final del texto.
+El texto debe terminar con los hashtags, sin ninguna frase adicional después.`;
 
   try {
     const aiText = await groqChat(systemPrompt, userPrompt);
@@ -158,7 +162,8 @@ export async function runSocialPublish() {
     }
 
     if (activityStatus === 'success' || activityStatus === 'simulated') {
-      await bridgeMarkPublished(blog.id, platform).catch(e => console.error("Error marking published", e));
+      const extraId = platform === 'linkedin' ? postIdExterno : undefined;
+      await bridgeMarkPublished(blog.id, platform, extraId).catch(e => console.error("Error marking published", e));
     }
 
     await logActivity({
