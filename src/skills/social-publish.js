@@ -187,7 +187,7 @@ async function publishReal(platform, content, imageUrl, articleUrl, articleTitle
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: fullImageUrl,
-          message: content,
+          caption: content,
           access_token: token
         })
       });
