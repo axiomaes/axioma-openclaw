@@ -148,24 +148,66 @@ async function publishReal(platform, content, imageUrl, articleUrl, articleTitle
     const bizId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
     const token = process.env.INSTAGRAM_ACCESS_TOKEN;
     if (!bizId) throw new Error("Missing INSTAGRAM_BUSINESS_ACCOUNT_ID");
-    if (!imageUrl) throw new Error("Instagram requires imageUrl");
 
-    const mediaRes = await fetch(`https://graph.facebook.com/v19.0/${bizId}/media`, {
+    const fullImageUrl = imageUrl ? (imageUrl.startsWith('http') ? imageUrl : `https://axioma-creativa.es${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`) : null;
+
+    if (!fullImageUrl) {
+      console.log("[SKIP] Instagram requiere imagen, blog sin cover.");
+      return "SKIPPED_NO_IMAGE";
+    }
+
+    const mediaRes = await fetch(`https://graph.facebook.com/v18.0/${bizId}/media`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_url: imageUrl, caption: content, access_token: token })
+      body: JSON.stringify({ image_url: fullImageUrl, caption: content, access_token: token })
     });
-    if (!mediaRes.ok) throw new Error("Error creating Instagram media");
+    if (!mediaRes.ok) throw new Error("Error creating Instagram media: " + await mediaRes.text());
     const mediaData = await mediaRes.json();
 
-    const pubRes = await fetch(`https://graph.facebook.com/v19.0/${bizId}/media_publish`, {
+    const pubRes = await fetch(`https://graph.facebook.com/v18.0/${bizId}/media_publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ creation_id: mediaData.id, access_token: token })
     });
-    if (!pubRes.ok) throw new Error("Error publishing Instagram media");
+    if (!pubRes.ok) throw new Error("Error publishing Instagram media: " + await pubRes.text());
     const pubData = await pubRes.json();
     return pubData.id;
+  }
+
+  if (platform === 'facebook') {
+    const pageId = process.env.FACEBOOK_PAGE_ID;
+    const token = process.env.FACEBOOK_ACCESS_TOKEN;
+    if (!pageId) throw new Error("Missing FACEBOOK_PAGE_ID");
+
+    const fullImageUrl = imageUrl ? (imageUrl.startsWith('http') ? imageUrl : `https://axioma-creativa.es${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`) : null;
+
+    if (fullImageUrl) {
+      const res = await fetch(`https://graph.facebook.com/v18.0/${pageId}/photos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: fullImageUrl,
+          message: content,
+          access_token: token
+        })
+      });
+      if (!res.ok) throw new Error("Error publishing Facebook photo: " + await res.text());
+      const data = await res.json();
+      return data.id;
+    } else {
+      const res = await fetch(`https://graph.facebook.com/v18.0/${pageId}/feed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          link: articleUrl || 'https://axioma-creativa.es',
+          message: content,
+          access_token: token
+        })
+      });
+      if (!res.ok) throw new Error("Error publishing Facebook link: " + await res.text());
+      const data = await res.json();
+      return data.id;
+    }
   }
 
   return `sim_real_${platform}_${Date.now()}`;
