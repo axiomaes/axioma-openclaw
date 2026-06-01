@@ -1,4 +1,4 @@
-import { shouldPublishNow, markPublished } from '../lib/scheduler.js';
+import { getPlatformsToPublish, markPlatformPublished } from '../lib/scheduler.js';
 import { groqChat } from '../lib/groq.js';
 import { getPendingBlogs, markPublished as bridgeMarkPublished, logActivity } from '../lib/agent-bridge.js';
 
@@ -214,8 +214,9 @@ async function publishReal(platform, content, imageUrl, articleUrl, articleTitle
 }
 
 export async function runSocialPublish() {
-  if (!shouldPublishNow()) {
-    console.log("Scheduler says not to publish now.");
+  const platformsToPublish = getPlatformsToPublish();
+  if (platformsToPublish.length === 0) {
+    console.log('[social-publish] No platforms scheduled for now.');
     return { status: 'skipped', reason: 'not_scheduled' };
   }
 
@@ -226,9 +227,9 @@ export async function runSocialPublish() {
   };
 
   try {
-    pending.linkedin = await getPendingBlogs('linkedin').catch(() => []);
-    pending.instagram = await getPendingBlogs('instagram').catch(() => []);
-    pending.facebook = await getPendingBlogs('facebook').catch(() => []);
+    if (platformsToPublish.includes('linkedin')) pending.linkedin = await getPendingBlogs('linkedin').catch(() => []);
+    if (platformsToPublish.includes('instagram')) pending.instagram = await getPendingBlogs('instagram').catch(() => []);
+    if (platformsToPublish.includes('facebook')) pending.facebook = await getPendingBlogs('facebook').catch(() => []);
   } catch (err) {
     console.error("Error fetching pending blogs:", err);
   }
@@ -245,10 +246,9 @@ export async function runSocialPublish() {
     return { status: 'skipped', reason: 'no_content' };
   }
 
-  const platforms = ['linkedin', 'instagram', 'facebook'];
   let publishedCount = 0;
 
-  for (const platform of platforms) {
+  for (const platform of platformsToPublish) {
     if (!pending[platform] || pending[platform].length === 0) continue;
     
     const blog = pending[platform][0];
@@ -289,11 +289,10 @@ export async function runSocialPublish() {
       detail: { post_id_externo: postIdExterno, copy_generado: copy, blog_url: blog.url_es || blog.slug }
     }).catch(e => console.error("Error logging activity", e));
 
-    publishedCount++;
-  }
-
-  if (publishedCount > 0) {
-    markPublished();
+    if (activityStatus === 'success' || activityStatus === 'simulated') {
+      markPlatformPublished(platform);
+      publishedCount++;
+    }
   }
 
   return { status: "success", publishedCount };
