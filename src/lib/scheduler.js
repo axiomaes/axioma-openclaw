@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 
-// El estado debe persistir en /app/.scheduler-state.json (ya no usamos /root/.openclaw)
+// El estado debe persistir en /app/data/.scheduler-state.json
 const STATE_FILE = process.env.NODE_ENV === 'production' 
-  ? '/app/.scheduler-state.json' 
+  ? '/app/data/.scheduler-state.json' 
   : './.scheduler-state.json';
 
 function getWeekStart(date) {

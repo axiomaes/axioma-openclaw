@@ -23,7 +23,12 @@ services:
       - MAILCOW_PASS=${MAILCOW_PASS}
     networks:
       - axioma-network
+    volumes:
+      - axioma-scout-state:/app/data
 
 networks:
   axioma-network:
     external: true
+
+volumes:
+  axioma-scout-state:
