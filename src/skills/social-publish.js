@@ -37,12 +37,83 @@ async function publishReal(platform, content, imageUrl, articleUrl, articleTitle
   if (platform === 'linkedin') {
     const personId = process.env.LINKEDIN_PERSON_ID;
     if (!personId) throw new Error("Missing LINKEDIN_PERSON_ID");
-
     const authorUrn = `urn:li:person:${personId}`;
+
+    let assetUrn = null;
+    const fullImageUrl = imageUrl ? (imageUrl.startsWith('http') ? imageUrl : `https://axioma-creativa.es${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`) : null;
+
+    if (fullImageUrl) {
+      try {
+        const registerRes = await fetch('https://api.linkedin.com/v2/assets?action=registerUpload', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.LINKEDIN_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            registerUploadRequest: {
+              recipes: ["urn:li:digitalmediaRecipe:feedshare-image"],
+              owner: authorUrn,
+              serviceRelationships: [{
+                relationshipType: "OWNER",
+                identifier: "urn:li:userGeneratedContent"
+              }]
+            }
+          })
+        });
+        
+        if (registerRes.ok) {
+          const registerData = await registerRes.json();
+          const uploadMechanism = registerData.value.uploadMechanism['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'];
+          const uploadUrl = uploadMechanism.uploadUrl;
+          assetUrn = registerData.value.asset;
+
+          const imageRes = await fetch(fullImageUrl);
+          if (imageRes.ok) {
+            const arrayBuffer = await imageRes.arrayBuffer();
+            const contentType = imageRes.headers.get('content-type') || 'image/jpeg';
+            
+            const uploadRes = await fetch(uploadUrl, {
+              method: 'PUT',
+              headers: {
+                'Authorization': `Bearer ${process.env.LINKEDIN_ACCESS_TOKEN}`,
+                'Content-Type': contentType
+              },
+              body: arrayBuffer
+            });
+            
+            if (!uploadRes.ok) {
+              console.error("LinkedIn image upload failed:", await uploadRes.text());
+              assetUrn = null;
+            }
+          } else {
+            console.error("Failed to download image:", await imageRes.text());
+            assetUrn = null;
+          }
+        } else {
+          console.error("LinkedIn registerUpload failed:", await registerRes.text());
+        }
+      } catch (err) {
+        console.error("Error handling LinkedIn image:", err.message);
+        assetUrn = null;
+      }
+    }
+
     const ugcPayload = {
       author: authorUrn,
       lifecycleState: 'PUBLISHED',
-      specificContent: {
+      specificContent: assetUrn ? {
+        'com.linkedin.ugc.ShareContent': {
+          shareCommentary: { text: content },
+          shareMediaCategory: 'IMAGE',
+          media: [{
+            status: 'READY',
+            description: { text: articleTitle || 'Nuevo artículo en el blog' },
+            media: assetUrn,
+            title: { text: articleTitle || 'Nuevo artículo en el blog' }
+          }]
+        }
+      } : {
         'com.linkedin.ugc.ShareContent': {
           shareCommentary: { text: content },
           shareMediaCategory: 'ARTICLE',
