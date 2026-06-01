@@ -3,15 +3,39 @@ import { groqChat } from '../lib/groq.js';
 import { getPendingBlogs, markPublished as bridgeMarkPublished, logActivity } from '../lib/agent-bridge.js';
 
 async function generateCopy(blog, platform) {
-  let instruction = "";
-  if (platform === 'linkedin') instruction = "copy profesional 150-200 palabras, CTA al URL del blog, hashtags sector tech";
-  if (platform === 'instagram') instruction = "copy visual 80-100 palabras, emojis moderados, 5 hashtags relevantes";
-  if (platform === 'facebook') instruction = "copy conversacional 100-130 palabras, pregunta al final para engagement";
-
-  const systemPrompt = `Eres el community manager de Axioma Creativa, agencia digital española especializada en desarrollo web, automatización e inteligencia artificial para empresas B2B.
+  let systemPrompt = `Eres el community manager de Axioma Creativa, agencia digital española especializada en desarrollo web, automatización e inteligencia artificial para empresas B2B.
 Tono: profesional pero cercano. Idioma: español.`;
+  let userPrompt = "";
 
-  const userPrompt = `Escribe un post para ${platform} sobre este artículo: 
+  if (platform === 'instagram') {
+    systemPrompt = `Eres el community manager de Axioma Creativa, agencia digital española especializada 
+en desarrollo web, automatización e inteligencia artificial para empresas B2B.
+Tono: profesional pero cercano, con personalidad. Idioma: español.`;
+
+    userPrompt = `Escribe un post para Instagram sobre este artículo:
+Título: ${blog.title}
+Descripción: ${blog.description}
+URL: ${blog.url_es || blog.slug}
+
+FORMATO OBLIGATORIO:
+- Párrafo de gancho (1-2 frases impactantes que generen curiosidad)
+- Párrafo de valor (2-3 frases explicando qué aprenderá el lector)
+- Llamada a la acción: "🔗 Link en bio para leer el artículo completo."
+- Línea en blanco
+- 5-7 hashtags relevantes separados por espacios
+
+REGLAS ESTRICTAS:
+- NO incluir la URL en el texto
+- NO usar comillas al inicio o final
+- Dejar UNA línea en blanco entre el CTA y los hashtags
+- Los hashtags deben ser específicos del sector tech/business español
+- Responde ÚNICAMENTE con el texto del post, sin explicaciones`;
+  } else {
+    let instruction = "";
+    if (platform === 'linkedin') instruction = "copy profesional 150-200 palabras, CTA al URL del blog, hashtags sector tech";
+    if (platform === 'facebook') instruction = "copy conversacional 100-130 palabras, pregunta al final para engagement";
+
+    userPrompt = `Escribe un post para ${platform} sobre este artículo: 
 Título: ${blog.title}
 Descripción: ${blog.description}
 TL;DR: ${blog.tldr}
@@ -22,6 +46,7 @@ Responde ÚNICAMENTE con el texto del post listo para publicar.
 NO incluyas explicaciones, preguntas, notas, ni frases como "si quieres más hashtags".
 NO incluyas comillas al inicio o final del texto.
 El texto debe terminar con los hashtags, sin ninguna frase adicional después.`;
+  }
 
   try {
     const aiText = await groqChat(systemPrompt, userPrompt);
