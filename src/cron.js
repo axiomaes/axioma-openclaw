@@ -17,9 +17,4 @@ export function startCron() {
 
   console.log('[cron] Jobs scheduled. Running...');
   
-  // Ejecuta inmediatamente al arrancar para verificar
-  setTimeout(async () => {
-    console.log('[cron] Running initial check...');
-    await runSocialPublish().catch(e => console.error('[cron] initial check error:', e));
-  }, 5000);
 }
