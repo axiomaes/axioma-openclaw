@@ -1,6 +1,5 @@
 import { ImapFlow } from 'imapflow';
 import MailComposer from 'nodemailer/lib/mail-composer/index.js';
-import { groqChat } from '../lib/groq.js';
 import { logActivity, createLead } from '../lib/agent-bridge.js';
 
 export async function runMailcowTriage(maxEmails = 5) {
@@ -40,43 +39,40 @@ export async function runMailcowTriage(maxEmails = 5) {
       for (const msg of messages) {
         const rawEmailContent = msg.source ? msg.source.toString('utf-8') : 'Contenido no disponible';
         const sender = msg.envelope.from && msg.envelope.from.length > 0 ? msg.envelope.from[0].address : 'Desconocido';
+        const senderName = msg.envelope.from && msg.envelope.from.length > 0
+          ? `${msg.envelope.from[0].name || sender.split('@')[0]}`
+          : sender.split('@')[0];
         const subject = msg.envelope.subject || 'Sin Asunto';
 
-        const systemPrompt = `Eres un asistente de triaje de correos para Axioma Creativa. Analiza el correo y redacta una respuesta profesional. Si el correo parece una consulta comercial o un lead interesado en nuestros servicios, DEBES incluir al final de tu respuesta el tag [LEAD: {"name":"Nombre", "email":"email", "phone":"telefono si hay"}].`;
-        const userPrompt = `De: ${sender}\nAsunto: ${subject}\n\nContenido original del correo:\n${rawEmailContent}`;
-
-        let aiDraft = "Respuesta autogenerada pendiente (Error de IA o credenciales faltantes).";
-
-        try {
-          const groqResponse = await groqChat(systemPrompt, userPrompt);
-          if (groqResponse) {
-            aiDraft = groqResponse;
-          }
-        } catch(err) {
-          console.error("Error from Groq API:", err.message);
-        }
-
-        const leadMatch = aiDraft.match(/\[LEAD:\s*(\{.*?\})\s*\]/);
+        // Fallback por si el backend falla
+        let aiDraft = 'Gracias por contactar con Axioma Creativa. Hemos recibido tu mensaje y nos pondremos en contacto contigo en menos de 48 horas.';
         let leadCreated = false;
 
-        if (leadMatch) {
-          try {
-            const leadData = JSON.parse(leadMatch[1]);
-            aiDraft = aiDraft.replace(leadMatch[0], '').trim();
+        // Llamar al backend — crea el lead, guarda la actividad y genera la respuesta con IA
+        try {
+          const backendResult = await createLead({
+            name: senderName,
+            email: sender,
+            phone: null,
+            source: 'email-agent',
+            notes: rawEmailContent,  // Enviamos el cuerpo real del correo
+          });
 
-            await createLead({
-              name: leadData.name || sender.split('@')[0],
-              email: leadData.email || sender,
-              phone: leadData.phone,
-              source: 'email-agent',
-              notes: `Generado a partir del correo: ${subject}`
-            }).catch(e => console.error("Error creating lead", e));
-            leadCreated = true;
-          } catch (e) {
-            console.error("Error al parsear o crear lead:", e);
+          // El backend ahora devuelve { lead, aiReply, notes_saved }
+          if (backendResult && backendResult.aiReply) {
+            aiDraft = backendResult.aiReply;
           }
+
+          if (backendResult && backendResult.lead) {
+            leadCreated = true;
+          }
+
+        } catch (e) {
+          console.error('[mailcow-triage] Error llamando al backend:', e.message);
+          // El fallback ya está definido arriba — continuamos con el borrador genérico
         }
 
+        // Subir borrador al IMAP con la respuesta generada por el backend
         const mailOptions = {
           from: process.env.MAILCOW_USER,
           to: sender,
@@ -84,25 +80,25 @@ export async function runMailcowTriage(maxEmails = 5) {
           text: aiDraft,
           inReplyTo: msg.envelope.messageId
         };
-
         const mail = new MailComposer(mailOptions);
         const rawDraftBuffer = await mail.compile().build();
-
         await client.append('Drafts', rawDraftBuffer, ['\\Draft']);
         await client.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true });
-        
+
         await logActivity({
           agent: 'Axio Scout',
           skill: 'mailcow-triage',
           action: 'Procesar Email',
           status: 'success',
-          detail: { 
-            sender, 
-            subject, 
+          detail: {
+            sender,
+            subject,
             leadCreated,
-            draft_length: aiDraft.length 
+            notes_saved: true,
+            draft_length: aiDraft.length,
+            source: 'backend-cloudflare-ai'
           }
-        }).catch(e => console.error("Error logging activity", e));
+        }).catch(e => console.error('[mailcow-triage] Error logging activity:', e));
 
         processedCount++;
       }
