@@ -21,14 +21,16 @@ const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || 'ia@axioma-creativa.es';
 
 // RSS feeds de tendencias y referencia sectorial
 const RSS_FEEDS = [
-  // Google Trends RSS — España, categoría negocios
-  'https://trends.google.com/trends/trendingsearches/daily/rss?geo=ES',
-  // Moz Blog
+  // Moz Blog — SEO de referencia
   'https://moz.com/blog/feed',
   // Search Engine Journal
   'https://www.searchenginejournal.com/feed/',
-  // Astro.build blog
-  'https://astro.build/blog/rss.xml',
+  // HubSpot Marketing Blog
+  'https://blog.hubspot.com/marketing/rss.xml',
+  // Neil Patel Blog
+  'https://neilpatel.com/blog/feed/',
+  // Semrush Blog
+  'https://www.semrush.com/blog/feed/',
 ];
 
 // Contexto de Axioma Creativa para que la IA priorice correctamente
@@ -73,16 +75,26 @@ async function fetchRSS(url) {
     if (!res.ok) return [];
     const text = await res.text();
 
-    // Extraer títulos del XML/RSS con regex simple
-    const titleMatches = text.matchAll(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/gs);
+    // Extraer títulos del XML/RSS — soporta CDATA, texto plano y entidades HTML
+    const titleMatches = text.matchAll(
+      /<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/gi
+    );
     const titles = [];
     for (const match of titleMatches) {
-      const title = (match[1] || match[2] || '').trim();
-      if (title && title.length > 10 && title.length < 200) {
+      const title = (match[1] || '')
+        .replace(/<!\[CDATA\[|\]\]>/g, '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'")
+        .replace(/<[^>]+>/g, '') // eliminar cualquier tag HTML residual
+        .trim();
+      if (title && title.length > 15 && title.length < 200) {
         titles.push(title);
       }
     }
-    // Devolver máximo 10 títulos por feed, saltando el primero (suele ser el nombre del feed)
+    // Devolver máximo 10 títulos por feed, saltando el primero (nombre del feed)
     return titles.slice(1, 11);
   } catch (err) {
     console.error(`[seo-agent] Error fetching RSS ${url}:`, err.message);
@@ -285,8 +297,13 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional, con esta estructu
       { role: 'user', content: analysisPrompt }
     ]);
 
-    // Limpiar respuesta y parsear JSON
-    const cleanResponse = aiResponse.replace(/```json|```/g, '').trim();
+    // Extraer el array JSON de la respuesta aunque haya texto adicional
+    const jsonMatch = aiResponse.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error('No JSON array found in AI response');
+    const cleanResponse = jsonMatch[0]
+      .replace(/```json|```/g, '')
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ') // eliminar caracteres de control
+      .trim();
     topics = JSON.parse(cleanResponse);
     console.log(`[seo-agent] AI proposed ${topics.length} topics`);
   } catch (err) {
