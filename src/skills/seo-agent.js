@@ -1,4 +1,5 @@
 import { logActivity } from '../lib/agent-bridge.js';
+import nodemailer from 'nodemailer';
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 
@@ -165,10 +166,7 @@ async function savePendingTopics(topics) {
 
 async function sendNotificationEmail(topics) {
   try {
-    // Importar nodemailer dinámicamente
-    const nodemailer = await import('nodemailer');
-    
-    const transporter = nodemailer.default.createTransporter({
+    const transporter = nodemailer.createTransporter({
       host: MAILCOW_SMTP_HOST,
       port: 587,
       secure: false,
