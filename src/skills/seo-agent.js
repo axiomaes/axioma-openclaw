@@ -282,8 +282,31 @@ async function commitArticleToGitHub(filename, content) {
 async function generateOGImage(title, slug, keywords) {
   try {
     // Truncar título si es muy largo
-    const displayTitle = title.length > 60 ? title.substring(0, 57) + '...' : title;
+    const displayTitle = title.length > 80 ? title.substring(0, 77) + '...' : title;
     const keywordText = (keywords || []).slice(0, 3).join(' · ');
+
+    function wrapText(text, maxChars) {
+      const words = text.split(' ');
+      const lines = [];
+      let currentLine = '';
+      
+      words.forEach(word => {
+        if ((currentLine + word).length > maxChars) {
+          if (currentLine.length > 0) lines.push(currentLine.trim());
+          currentLine = word + ' ';
+        } else {
+          currentLine += word + ' ';
+        }
+      });
+      if (currentLine.length > 0) lines.push(currentLine.trim());
+      return lines;
+    }
+
+    const escapedTitle = displayTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const titleLines = wrapText(escapedTitle, 35);
+    const titleSvg = titleLines.map((line, i) => 
+      `<text x="60" y="${190 + i * 65}" font-family="Arial, sans-serif" font-size="52" font-weight="900" fill="#ffffff">${line}</text>`
+    ).join('\n  ');
 
     // SVG template con el diseño de Axioma Creativa
     const svgContent = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
@@ -304,11 +327,7 @@ async function generateOGImage(title, slug, keywords) {
   <text x="60" y="120" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#14b884" letter-spacing="3">AXIOMA CREATIVA</text>
   
   <!-- Título principal -->
-  <foreignObject x="60" y="150" width="1080" height="280">
-    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Arial, sans-serif; font-size: 52px; font-weight: 900; color: #ffffff; line-height: 1.2; word-wrap: break-word;">
-      ${displayTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}
-    </div>
-  </foreignObject>
+  ${titleSvg}
   
   <!-- Keywords -->
   <text x="60" y="510" font-family="Arial, sans-serif" font-size="22" fill="#14b884" font-weight="600">${keywordText}</text>
