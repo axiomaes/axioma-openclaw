@@ -602,9 +602,17 @@ ogImage: "/images/blog/${selectedTopic.slug}.png"
 
     try {
       const articleUrl = `https://axioma-creativa.es/es/blog/${selectedTopic.slug}`;
+      // Generar UUID v4 válido para compatibilidad con Prisma
+      const crypto = await import('crypto');
+      const forceBlogId = crypto.default?.randomUUID?.() ?? crypto.randomUUID?.() ??
+        'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+          const r = Math.random() * 16 | 0;
+          return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        });
+
       const socialResult = await runSocialPublish({
         forceBlog: {
-          id: `seo-agent-${Date.now()}`,
+          id: forceBlogId,
           title: selectedTopic.title,
           description: selectedTopic.target_pain,
           tldr: `${selectedTopic.title} — ${selectedTopic.target_pain}`,
