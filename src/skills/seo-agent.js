@@ -87,7 +87,8 @@ async function callCloudflareAI(messages) {
   );
   if (!res.ok) throw new Error(`Cloudflare AI error: ${res.status}`);
   const data = await res.json();
-  return data?.result?.response ?? null;
+  // Cloudflare devuelve el contenido en choices[0].message.content como string JSON
+  return data?.result?.choices?.[0]?.message?.content ?? data?.result?.response ?? null;
 }
 
 async function fetchRSS(url) {
