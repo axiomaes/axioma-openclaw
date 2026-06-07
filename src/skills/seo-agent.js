@@ -50,11 +50,23 @@ Palabras clave estratégicas: CRM pymes España, migración WordPress Astro, eco
 // ─── Utilidades ───────────────────────────────────────────────────────────────
 
 function parseAIResponse(raw) {
-  // Extraer el bloque array [...] de la respuesta
-  const match = raw.match(/\[[\s\S]*\]/);
-  if (!match) throw new Error('No array found in AI response');
+  // Intentar primero parsear como JSON completo y extraer el primer array
+  let str = '';
+  
+  // Buscar el primer array [...] en la respuesta (puede estar anidado en un objeto)
+  const arrayMatch = raw.match(/\[[\s\S]*?\]/s);
+  // Buscar también array dentro de objeto {"key": [...]}
+  const nestedMatch = raw.match(/:\s*(\[[\s\S]*\])\s*[,}]/s);
+  // Buscar array completo más largo (puede abarcar múltiples líneas)
+  const fullMatch = raw.match(/\[[\s\S]*\]/s);
 
-  let str = match[0];
+  if (fullMatch) {
+    str = fullMatch[0];
+  } else if (nestedMatch) {
+    str = nestedMatch[1];
+  } else {
+    throw new Error('No array found in AI response');
+  }
 
   // Convertir JS object notation a JSON válido:
   // Añadir comillas dobles a claves sin comillas (ej: title: -> "title":)
@@ -82,7 +94,7 @@ async function callCloudflareAI(messages) {
         'Authorization': `Bearer ${CF_API_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ messages })
+      body: JSON.stringify({ messages, max_tokens: 2048 })
     }
   );
   if (!res.ok) throw new Error(`Cloudflare AI error: ${res.status}`);
