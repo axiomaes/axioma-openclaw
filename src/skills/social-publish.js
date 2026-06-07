@@ -238,9 +238,14 @@ async function publishReal(platform, content, imageUrl, articleUrl, articleTitle
   return `sim_real_${platform}_${Date.now()}`;
 }
 
-export async function runSocialPublish() {
-  const platformsToPublish = getPlatformsToPublish();
-  if (platformsToPublish.length === 0) {
+export async function runSocialPublish(options = {}) {
+  const { forceBlog } = options;
+
+  const platformsToPublish = forceBlog
+    ? ['linkedin', 'instagram', 'facebook']
+    : getPlatformsToPublish();
+
+  if (!forceBlog && platformsToPublish.length === 0) {
     console.log('[social-publish] No platforms scheduled for now.');
     return { status: 'skipped', reason: 'not_scheduled' };
   }
@@ -251,12 +256,20 @@ export async function runSocialPublish() {
     facebook: []
   };
 
-  try {
-    if (platformsToPublish.includes('linkedin')) pending.linkedin = await getPendingBlogs('linkedin').catch(() => []);
-    if (platformsToPublish.includes('instagram')) pending.instagram = await getPendingBlogs('instagram').catch(() => []);
-    if (platformsToPublish.includes('facebook')) pending.facebook = await getPendingBlogs('facebook').catch(() => []);
-  } catch (err) {
-    console.error("Error fetching pending blogs:", err);
+  if (forceBlog) {
+    // Usar el blog forzado directamente para todas las plataformas
+    pending.linkedin = [forceBlog];
+    pending.instagram = [forceBlog];
+    pending.facebook = [forceBlog];
+    console.log(`[social-publish] Force publishing: ${forceBlog.title}`);
+  } else {
+    try {
+      if (platformsToPublish.includes('linkedin')) pending.linkedin = await getPendingBlogs('linkedin').catch(() => []);
+      if (platformsToPublish.includes('instagram')) pending.instagram = await getPendingBlogs('instagram').catch(() => []);
+      if (platformsToPublish.includes('facebook')) pending.facebook = await getPendingBlogs('facebook').catch(() => []);
+    } catch (err) {
+      console.error("Error fetching pending blogs:", err);
+    }
   }
 
   if (!pending.linkedin?.length && !pending.instagram?.length && !pending.facebook?.length) {

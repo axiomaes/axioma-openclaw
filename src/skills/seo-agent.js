@@ -1,6 +1,9 @@
 import { logActivity } from '../lib/agent-bridge.js';
 import * as nodemailerModule from 'nodemailer';
 const nodemailer = nodemailerModule.default ?? nodemailerModule;
+import * as sharpModule from 'sharp';
+const sharp = sharpModule.default ?? sharpModule;
+import { runSocialPublish } from './social-publish.js';
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 
@@ -274,6 +277,120 @@ async function commitArticleToGitHub(filename, content) {
   return await res.json();
 }
 
+// ─── Generación de imagen Open Graph ─────────────────────────────────────────
+
+async function generateOGImage(title, slug, keywords) {
+  try {
+    // Truncar título si es muy largo
+    const displayTitle = title.length > 60 ? title.substring(0, 57) + '...' : title;
+    const keywordText = (keywords || []).slice(0, 3).join(' · ');
+
+    // SVG template con el diseño de Axioma Creativa
+    const svgContent = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0F172A;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#103B30;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Fondo -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  
+  <!-- Línea verde superior -->
+  <rect x="60" y="60" width="120" height="4" rx="2" fill="#14b884"/>
+  
+  <!-- Logo / Marca -->
+  <text x="60" y="120" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#14b884" letter-spacing="3">AXIOMA CREATIVA</text>
+  
+  <!-- Título principal -->
+  <foreignObject x="60" y="150" width="1080" height="280">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Arial, sans-serif; font-size: 52px; font-weight: 900; color: #ffffff; line-height: 1.2; word-wrap: break-word;">
+      ${displayTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+    </div>
+  </foreignObject>
+  
+  <!-- Keywords -->
+  <text x="60" y="510" font-family="Arial, sans-serif" font-size="22" fill="#14b884" font-weight="600">${keywordText}</text>
+  
+  <!-- URL -->
+  <text x="60" y="570" font-family="Arial, sans-serif" font-size="18" fill="#64748b">axioma-creativa.es/es/blog/${slug}</text>
+  
+  <!-- Punto decorativo verde -->
+  <circle cx="1140" cy="570" r="8" fill="#14b884"/>
+</svg>`;
+
+    // Convertir SVG a PNG con Sharp
+    const pngBuffer = await sharp(Buffer.from(svgContent))
+      .png()
+      .toBuffer();
+
+    return pngBuffer;
+  } catch (err) {
+    console.error('[seo-agent] Error generating OG image:', err.message);
+    return null;
+  }
+}
+
+async function commitOGImageToGitHub(slug, pngBuffer) {
+  try {
+    const filePath = `public/images/blog/${slug}.png`;
+    const encodedContent = pngBuffer.toString('base64');
+
+    // Verificar si ya existe
+    let sha = null;
+    try {
+      const checkRes = await fetch(
+        `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${GITHUB_TOKEN}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'AxiomaScout/1.0'
+          }
+        }
+      );
+      if (checkRes.ok) {
+        const existing = await checkRes.json();
+        sha = existing.sha;
+      }
+    } catch (e) {}
+
+    const body = {
+      message: `feat(blog): OG image for ${slug}`,
+      content: encodedContent,
+      branch: GITHUB_BRANCH,
+    };
+    if (sha) body.sha = sha;
+
+    const res = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'AxiomaScout/1.0'
+        },
+        body: JSON.stringify(body)
+      }
+    );
+
+    if (!res.ok) {
+      const error = await res.text();
+      console.error(`[seo-agent] OG image commit failed: ${error}`);
+      return false;
+    }
+
+    console.log(`[seo-agent] OG image committed: ${filePath}`);
+    return true;
+  } catch (err) {
+    console.error('[seo-agent] Error committing OG image:', err.message);
+    return false;
+  }
+}
+
 // ─── Fase 1: Análisis de tendencias ──────────────────────────────────────────
 
 export async function runTrendAnalysis() {
@@ -395,27 +512,37 @@ export async function runContentGeneration() {
   console.log(`[seo-agent] Selected topic: ${selectedTopic.title}`);
 
   // 3. Generar el artículo completo con la IA
-  const articlePrompt = `Eres un redactor experto en marketing de contenidos para empresas tecnológicas españolas.
+  const keywordsList = Array.isArray(selectedTopic.keywords) 
+    ? selectedTopic.keywords.join(', ') 
+    : selectedTopic.keywords;
+
+  const articlePrompt = `Eres un redactor experto en SEO y marketing de contenidos para empresas tecnológicas españolas.
 
 CONTEXTO DE LA EMPRESA:
 ${AXIOMA_CONTEXT}
 
 TEMA DEL ARTÍCULO:
-- Título: ${selectedTopic.title}
+- Título H1 exacto: ${selectedTopic.title}
 - Dolor del cliente: ${selectedTopic.target_pain}
-- Keywords principales: ${selectedTopic.keywords.join(', ')}
+- Keywords principales (DEBEN aparecer en el texto): ${keywordsList}
 - Enlace interno a incluir: ${selectedTopic.internal_link}
 
-INSTRUCCIONES:
+INSTRUCCIONES DE REDACCIÓN:
 Redacta un artículo de blog completo en español para Axioma Creativa.
 
-El artículo debe:
-- Empezar con el dolor del cliente en el primer párrafo (no con datos ni definiciones)
-- Tener entre 800 y 1200 palabras
-- Usar H2 y H3 para estructurar el contenido
-- Incluir un ejemplo práctico real o caso de uso
-- Terminar con un CTA que enlace a ${selectedTopic.internal_link}
-- Tener un tono cercano, honesto y sin jerga técnica innecesaria
+ESTRUCTURA OBLIGATORIA:
+1. Primer párrafo: describe el dolor del cliente usando las keywords principales en las primeras 100 palabras
+2. H2 "El problema real": explica por qué ocurre este problema en las pymes españolas
+3. H2 "Cómo resolverlo": solución práctica con ejemplo concreto
+4. H2 "Resultados que puedes esperar": beneficios tangibles con datos o estimaciones realistas
+5. Párrafo final de CTA: invita a conocer la solución enlazando a ${selectedTopic.internal_link}
+
+REGLAS SEO OBLIGATORIAS:
+- Usar las keywords ${keywordsList} al menos 3 veces cada una a lo largo del texto
+- La primera keyword debe aparecer en los primeros 100 caracteres del artículo
+- Incluir al menos un H3 dentro de alguna sección H2
+- Entre 900 y 1200 palabras en total
+- Tono cercano, honesto, sin jerga técnica innecesaria
 - NO mencionar competidores por nombre
 
 Responde ÚNICAMENTE con el contenido del artículo en Markdown, sin frontmatter, sin explicaciones adicionales.`;
@@ -451,10 +578,46 @@ ogImage: "/images/blog/${selectedTopic.slug}.png"
 
   const fullArticle = frontmatter + articleContent;
 
-  // 5. Hacer commit al repositorio de GitHub
+  // 5. Generar imagen Open Graph
+  let ogImageCommitted = false;
+  const ogImageBuffer = await generateOGImage(
+    selectedTopic.title,
+    selectedTopic.slug,
+    Array.isArray(selectedTopic.keywords) ? selectedTopic.keywords : []
+  );
+
+  if (ogImageBuffer) {
+    ogImageCommitted = await commitOGImageToGitHub(selectedTopic.slug, ogImageBuffer);
+  }
+
+  // 6. Hacer commit del artículo MDX al repositorio de GitHub
   try {
     const commitResult = await commitArticleToGitHub(filename, fullArticle);
     console.log(`[seo-agent] Article committed to GitHub: ${filename}`);
+
+    // 7. Publicar en redes sociales
+    // Esperar 30 segundos para que Coolify despliegue el artículo antes de publicar
+    console.log('[seo-agent] Waiting 30s for deployment before social publish...');
+    await new Promise(resolve => setTimeout(resolve, 30000));
+
+    try {
+      const articleUrl = `https://axioma-creativa.es/es/blog/${selectedTopic.slug}`;
+      const socialResult = await runSocialPublish({
+        forceBlog: {
+          id: `seo-agent-${Date.now()}`,
+          title: selectedTopic.title,
+          description: selectedTopic.target_pain,
+          tldr: `${selectedTopic.title} — ${selectedTopic.target_pain}`,
+          slug: selectedTopic.slug,
+          url_es: articleUrl,
+          og_image: `/images/blog/${selectedTopic.slug}.png`,
+          cover: `/images/blog/${selectedTopic.slug}.png`,
+        }
+      });
+      console.log('[seo-agent] Social publish result:', JSON.stringify(socialResult));
+    } catch (socialErr) {
+      console.error('[seo-agent] Social publish error (non-blocking):', socialErr.message);
+    }
 
     await logActivity({
       agent: 'Axio Scout',
@@ -466,7 +629,9 @@ ogImage: "/images/blog/${selectedTopic.slug}.png"
         title: selectedTopic.title,
         slug: selectedTopic.slug,
         commit_sha: commitResult?.commit?.sha,
-        characters: fullArticle.length
+        characters: fullArticle.length,
+        og_image_generated: ogImageCommitted,
+        social_publish: true
       }
     }).catch(e => console.error('[seo-agent] Log error:', e));
 
@@ -474,7 +639,8 @@ ogImage: "/images/blog/${selectedTopic.slug}.png"
       status: 'success',
       filename,
       title: selectedTopic.title,
-      commit_sha: commitResult?.commit?.sha
+      commit_sha: commitResult?.commit?.sha,
+      og_image: ogImageCommitted,
     };
 
   } catch (err) {
