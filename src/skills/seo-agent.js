@@ -616,8 +616,8 @@ ogImage: "/images/blog/${selectedTopic.slug}.png"
 
     // 7. Publicar en redes sociales
     // Esperar 30 segundos para que Coolify despliegue el artículo antes de publicar
-    console.log('[seo-agent] Waiting 30s for deployment before social publish...');
-    await new Promise(resolve => setTimeout(resolve, 30000));
+    console.log('[seo-agent] Waiting 4m for deployment before social publish...');
+    await new Promise(resolve => setTimeout(resolve, 240000));
 
     try {
       const articleUrl = `https://axioma-creativa.es/es/blog/${selectedTopic.slug}`;
