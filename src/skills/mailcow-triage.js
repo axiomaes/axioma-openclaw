@@ -2,7 +2,10 @@ import { ImapFlow } from 'imapflow';
 import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import { logActivity, createLead } from '../lib/agent-bridge.js';
 
-export async function runMailcowTriage(maxEmails = 5) {
+// Límite diario de correos procesados para controlar el consumo de Cloudflare AI
+const DAILY_EMAIL_LIMIT = parseInt(process.env.EMAIL_DAILY_LIMIT || '5');
+
+export async function runMailcowTriage(maxEmails = DAILY_EMAIL_LIMIT) {
   let processedCount = 0;
   
   if (!process.env.MAILCOW_IMAP_HOST) {
@@ -33,7 +36,10 @@ export async function runMailcowTriage(maxEmails = 5) {
       
       for await (let msg of client.fetch(search, { source: true, uid: true, envelope: true })) {
         messages.push(msg);
-        if (messages.length >= maxEmails) break;
+        if (messages.length >= maxEmails) {
+          console.log(`[mailcow-triage] Daily limit of ${maxEmails} emails reached, stopping.`);
+          break;
+        }
       }
 
       for (const msg of messages) {

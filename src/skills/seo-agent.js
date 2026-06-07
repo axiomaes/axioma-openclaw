@@ -1,5 +1,6 @@
 import { logActivity } from '../lib/agent-bridge.js';
-import nodemailer from 'nodemailer';
+import * as nodemailerModule from 'nodemailer';
+const nodemailer = nodemailerModule.default ?? nodemailerModule;
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 
