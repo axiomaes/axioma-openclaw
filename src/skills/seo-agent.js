@@ -49,6 +49,30 @@ Palabras clave estratégicas: CRM pymes España, migración WordPress Astro, eco
 
 // ─── Utilidades ───────────────────────────────────────────────────────────────
 
+function parseAIResponse(raw) {
+  // Extraer el bloque array [...] de la respuesta
+  const match = raw.match(/\[[\s\S]*\]/);
+  if (!match) throw new Error('No array found in AI response');
+
+  let str = match[0];
+
+  // Convertir JS object notation a JSON válido:
+  // Añadir comillas dobles a claves sin comillas (ej: title: -> "title":)
+  str = str.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)(\s*:)/g, '$1"$2"$3');
+
+  // Reemplazar comillas simples por dobles en valores string
+  // Solo cuando la comilla simple delimita un valor completo
+  str = str.replace(/:\s*'([^']*)'/g, ': "$1"');
+
+  // Eliminar comas finales antes de } o ] (trailing commas)
+  str = str.replace(/,(\s*[}\]])/g, '$1');
+
+  // Eliminar caracteres de control que rompen JSON.parse
+  str = str.replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ');
+
+  return JSON.parse(str);
+}
+
 async function callCloudflareAI(messages) {
   const res = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/${CF_MODEL}`,
@@ -297,14 +321,8 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional, con esta estructu
       { role: 'user', content: analysisPrompt }
     ]);
 
-    // Extraer el array JSON de la respuesta aunque haya texto adicional
-    const jsonMatch = aiResponse.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) throw new Error('No JSON array found in AI response');
-    const cleanResponse = jsonMatch[0]
-      .replace(/```json|```/g, '')
-      .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ') // eliminar caracteres de control
-      .trim();
-    topics = JSON.parse(cleanResponse);
+    // Parsear respuesta de la IA — soporta JSON y JS object notation
+    topics = parseAIResponse(aiResponse);
     console.log(`[seo-agent] AI proposed ${topics.length} topics`);
   } catch (err) {
     console.error('[seo-agent] Error parsing AI response:', err.message);
