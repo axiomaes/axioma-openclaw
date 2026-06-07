@@ -167,7 +167,7 @@ async function savePendingTopics(topics) {
 
 async function sendNotificationEmail(topics) {
   try {
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       host: MAILCOW_SMTP_HOST,
       port: 587,
       secure: false,
