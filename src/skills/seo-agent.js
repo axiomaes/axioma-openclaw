@@ -281,70 +281,27 @@ async function commitArticleToGitHub(filename, content) {
 
 async function generateOGImage(title, slug, keywords) {
   try {
-    // Truncar título si es muy largo
-    const displayTitle = title.length > 80 ? title.substring(0, 77) + '...' : title;
-    const keywordText = (keywords || []).slice(0, 3).join(' · ');
-
-    function wrapText(text, maxChars) {
-      const words = text.split(' ');
-      const lines = [];
-      let currentLine = '';
-      
-      words.forEach(word => {
-        if ((currentLine + word).length > maxChars) {
-          if (currentLine.length > 0) lines.push(currentLine.trim());
-          currentLine = word + ' ';
-        } else {
-          currentLine += word + ' ';
-        }
-      });
-      if (currentLine.length > 0) lines.push(currentLine.trim());
-      return lines;
+    const model = '@cf/bytedance/stable-diffusion-xl-lightning';
+    const url = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/${model}`;
+    
+    const prompt = `A highly professional, cinematic, photorealistic corporate photograph representing the business concept: ${title}. High tech, business environment, modern, highly detailed, realistic, vibrant colors, 8k resolution, award winning photography. No text.`;
+    
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${CF_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ prompt })
+    });
+    
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`CF AI error: ${error}`);
     }
-
-    const escapedTitle = displayTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const titleLines = wrapText(escapedTitle, 35);
-    const titleSvg = titleLines.map((line, i) => 
-      `<text x="60" y="${190 + i * 65}" font-family="Arial, sans-serif" font-size="52" font-weight="900" fill="#ffffff">${line}</text>`
-    ).join('\n  ');
-
-    // SVG template con el diseño de Axioma Creativa
-    const svgContent = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0F172A;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#103B30;stop-opacity:1" />
-    </linearGradient>
-  </defs>
-  
-  <!-- Fondo -->
-  <rect width="1200" height="630" fill="url(#bg)"/>
-  
-  <!-- Línea verde superior -->
-  <rect x="60" y="60" width="120" height="4" rx="2" fill="#14b884"/>
-  
-  <!-- Logo / Marca -->
-  <text x="60" y="120" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#14b884" letter-spacing="3">AXIOMA CREATIVA</text>
-  
-  <!-- Título principal -->
-  ${titleSvg}
-  
-  <!-- Keywords -->
-  <text x="60" y="510" font-family="Arial, sans-serif" font-size="22" fill="#14b884" font-weight="600">${keywordText}</text>
-  
-  <!-- URL -->
-  <text x="60" y="570" font-family="Arial, sans-serif" font-size="18" fill="#64748b">axioma-creativa.es/es/blog/${slug}</text>
-  
-  <!-- Punto decorativo verde -->
-  <circle cx="1140" cy="570" r="8" fill="#14b884"/>
-</svg>`;
-
-    // Convertir SVG a PNG con Sharp
-    const pngBuffer = await sharp(Buffer.from(svgContent))
-      .png()
-      .toBuffer();
-
-    return pngBuffer;
+    
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer);
   } catch (err) {
     console.error('[seo-agent] Error generating OG image:', err.message);
     return null;
