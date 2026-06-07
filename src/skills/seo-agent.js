@@ -1,4 +1,4 @@
-import { logActivity } from './scout-web.js';
+import { logActivity } from '../lib/agent-bridge.js';
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 
