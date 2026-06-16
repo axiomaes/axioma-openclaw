@@ -53,3 +53,12 @@ export async function createLead(data) {
   if (!res.ok) throw new Error(`createLead failed`);
   return await res.json();
 }
+
+export async function syncBlogs() {
+  const res = await fetch(`${getBaseUrl()}/agent-bridge/blogs/sync`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error(`syncBlogs failed: ${res.status}`);
+  return await res.json();
+}

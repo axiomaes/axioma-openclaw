@@ -1,4 +1,4 @@
-import { logActivity } from '../lib/agent-bridge.js';
+import { logActivity, syncBlogs } from '../lib/agent-bridge.js';
 import * as nodemailerModule from 'nodemailer';
 const nodemailer = nodemailerModule.default ?? nodemailerModule;
 import * as sharpModule from 'sharp';
@@ -26,16 +26,16 @@ const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || 'ia@axioma-creativa.es';
 
 // RSS feeds de tendencias y referencia sectorial
 const RSS_FEEDS = [
-  // Moz Blog — SEO de referencia
+  // Referencia SEO internacional
   'https://moz.com/blog/feed',
-  // Search Engine Journal
   'https://www.searchenginejournal.com/feed/',
-  // HubSpot Marketing Blog
-  'https://blog.hubspot.com/marketing/rss.xml',
-  // Neil Patel Blog
-  'https://neilpatel.com/blog/feed/',
-  // Semrush Blog
   'https://www.semrush.com/blog/feed/',
+
+  // Mercado español — marketing, pymes y digitalización
+  'https://www.marketingdirecto.com/feed',
+  'https://www.puromarketing.com/rss.php',
+  'https://blogthinkbig.com/feed',
+  'https://www.emprendedores.es/feed/',
 ];
 
 // Contexto de Axioma Creativa para que la IA priorice correctamente
@@ -395,7 +395,7 @@ CONTEXTO DE LA EMPRESA:
 ${AXIOMA_CONTEXT}
 
 TITULARES RECIENTES DE TENDENCIAS Y BLOGS DE REFERENCIA:
-${allTitles.slice(0, 40).map((t, i) => `${i + 1}. ${t}`).join('\n')}
+${allTitles.slice(0, 60).map((t, i) => `${i + 1}. ${t}`).join('\n')}
 
 TAREA:
 Analiza estos titulares y propón exactamente 3 temas de artículos de blog para Axioma Creativa.
@@ -572,9 +572,17 @@ ogImage: "/images/blog/${selectedTopic.slug}.png"
     console.log(`[seo-agent] Article committed to GitHub: ${filename}`);
 
     // 7. Publicar en redes sociales
-    // Esperar 30 segundos para que Coolify despliegue el artículo antes de publicar
+    // Esperar 4 minutos para que Coolify despliegue el artículo
     console.log('[seo-agent] Waiting 4m for deployment before social publish...');
     await new Promise(resolve => setTimeout(resolve, 240000));
+
+    // Sincronizar el nuevo artículo al backend antes de publicar en redes
+    try {
+      const syncResult = await syncBlogs();
+      console.log('[seo-agent] Blog sync after deploy:', JSON.stringify(syncResult));
+    } catch (syncErr) {
+      console.warn('[seo-agent] Blog sync failed (non-blocking):', syncErr.message);
+    }
 
     try {
       const articleUrl = `https://axioma-creativa.es/es/blog/${selectedTopic.slug}`;

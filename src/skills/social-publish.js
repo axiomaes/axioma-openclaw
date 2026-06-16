@@ -1,6 +1,7 @@
 import { getPlatformsToPublish, markPlatformPublished } from '../lib/scheduler.js';
 import { groqChat } from '../lib/groq.js';
 import { getPendingBlogs, markPublished as bridgeMarkPublished, logActivity } from '../lib/agent-bridge.js';
+import { sendAlert } from '../lib/notifier.js';
 
 async function generateCopy(blog, platform) {
   let systemPrompt = `Eres el community manager de Axioma Creativa, agencia digital española especializada en desarrollo web, automatización e inteligencia artificial para empresas B2B.
@@ -56,6 +57,21 @@ El texto debe terminar con los hashtags, sin ninguna frase adicional después.`;
   }
   
   return `¡Nuevo artículo! ${blog.title} - ${blog.url_es || blog.slug}`;
+}
+
+async function checkLinkedInToken() {
+  const token = process.env.LINKEDIN_ACCESS_TOKEN;
+  if (!token || token.includes('tu_token') || token.length < 15) return false;
+  try {
+    const res = await fetch('https://api.linkedin.com/v2/userinfo', {
+      headers: { 'Authorization': `Bearer ${token}` },
+      signal: AbortSignal.timeout(8000)
+    });
+    return res.status !== 401;
+  } catch {
+    // Network error — don't block publishing
+    return true;
+  }
 }
 
 async function publishReal(platform, content, imageUrl, articleUrl, articleTitle) {
@@ -300,6 +316,36 @@ export async function runSocialPublish(options = {}) {
     let postIdExterno = `sim_${platform}_${Math.random().toString(36).substring(2, 10)}`;
 
     if (isConfigured) {
+      // Validate LinkedIn token before attempting publish — tokens expire every 60 days
+      if (platform === 'linkedin') {
+        const tokenValid = await checkLinkedInToken();
+        if (!tokenValid) {
+          console.error('[social-publish] LinkedIn token expired or invalid — skipping publish');
+          activityStatus = 'error';
+          await sendAlert(
+            '[Axio Scout] ⚠️ Token de LinkedIn expirado',
+            `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+              <div style="background:#0F172A;padding:20px;border-radius:8px 8px 0 0;">
+                <h2 style="color:#fff;margin:0;font-size:18px;">Axio Scout · Alerta de autenticación</h2>
+              </div>
+              <div style="padding:20px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;">
+                <p style="color:#dc2626;font-weight:700;">El token de LinkedIn ha expirado (TTL: 60 días).</p>
+                <p style="color:#64748b;">El agente no pudo publicar en LinkedIn. Artículo afectado: <strong>${blog.title}</strong></p>
+                <p style="color:#64748b;">Renueva el token en el <a href="https://www.linkedin.com/developers/apps">LinkedIn Developer Portal</a> y actualiza la variable <code>LINKEDIN_ACCESS_TOKEN</code> en el servidor.</p>
+              </div>
+            </div>`
+          ).catch(e => console.error('[social-publish] Failed to send token alert:', e.message));
+          await logActivity({
+            agent: 'Axio Scout',
+            skill: 'social-publish',
+            action: 'LinkedIn Token Expired',
+            status: 'error',
+            detail: { blog_title: blog.title, reason: 'token_expired_401' }
+          }).catch(() => {});
+          continue;
+        }
+      }
+
       try {
         postIdExterno = await publishReal(platform, copy, blog.og_image || blog.cover, blog.url_es || blog.slug, blog.title);
         activityStatus = 'success';

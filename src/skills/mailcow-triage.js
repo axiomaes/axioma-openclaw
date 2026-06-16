@@ -3,7 +3,7 @@ import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import { logActivity, createLead } from '../lib/agent-bridge.js';
 
 // Límite diario de correos procesados para controlar el consumo de Cloudflare AI
-const DAILY_EMAIL_LIMIT = parseInt(process.env.EMAIL_DAILY_LIMIT || '5');
+const DAILY_EMAIL_LIMIT = parseInt(process.env.EMAIL_DAILY_LIMIT || '10');
 
 export async function runMailcowTriage(maxEmails = DAILY_EMAIL_LIMIT) {
   let processedCount = 0;
